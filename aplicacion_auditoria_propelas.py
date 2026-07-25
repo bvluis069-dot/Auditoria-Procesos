@@ -18,7 +18,7 @@ st.set_page_config(
 ACTIVAS_FILE = "auditorias_activas.csv"
 HISTORIAL_FILE = "hoja_de_procesos_agitacion.csv"
 
-# Conexión a Google Sheets (Regresamos a tu archivo JSON)
+# Conexión a Google Sheets (Tu archivo JSON)
 GOOGLE_CREDENTIALS = "mes-molienda-sanchez-7a9a01e5553d.json"
 GOOGLE_SHEET_NAME = "Control_Molienda_MES"
 WORKSHEET_PROPELAS = "Historial_Propelas"
@@ -28,9 +28,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# ---------------------------------------------------------
-# NUEVA NOMENCLATURA DE COWLES (PTPLSME)
-# ---------------------------------------------------------
 LISTA_PROPELAS = [f"PTPLSME{i:02d} - Tintas" for i in range(1, 12)] + [
     f"PTPLSME{i:02d} - Recubrimientos" for i in range(12, 16)
 ]
@@ -61,7 +58,6 @@ def conectar_google_sheets():
         return None
 
 def guardar_en_google_sheets(datos):
-    """Envía la fila finalizada a la hoja Historial_Propelas"""
     try:
         libro = conectar_google_sheets()
         if not libro:
@@ -106,9 +102,6 @@ def guardar_en_google_sheets(datos):
         st.warning(f"⚠️ Nota: Se guardó localmente, pero falló el envío a Google Sheets: {e}")
         return False
 
-# ---------------------------------------------------------
-# REGLAS DE TIEMPO POR TARA TOTAL (SOLO TINTAS)
-# ---------------------------------------------------------
 def calcular_regla_tiempo(tara_total_kg):
     if tara_total_kg <= 200:
         tiempo_target = 10.0
@@ -125,14 +118,9 @@ def calcular_regla_tiempo(tara_total_kg):
         
     return tiempo_target, rango_str, min_p, max_p
 
-# ---------------------------------------------------------
-# MANEJO DE BASE DE DATOS LOCAL
-# ---------------------------------------------------------
 def cargar_activas():
     if os.path.exists(ACTIVAS_FILE):
         df = pd.read_csv(ACTIVAS_FILE)
-        
-        # Corregir columnas de texto/objeto
         columnas_texto = [
             "Tipo_Producto", "Departamento", "Propela", "Orden_Fabricacion_Lote", "Codigo_PS", 
             "Area", "Operador", "Operador_Mezclado", "Supervisor", "Auditor", 
@@ -143,18 +131,14 @@ def cargar_activas():
         for col in columnas_texto:
             if col in df.columns:
                 df[col] = df[col].fillna("").astype(object)
-                
         if "En_Mezclado" in df.columns:
             df["En_Mezclado"] = df["En_Mezclado"].astype(bool)
-            
         if "Operador_Mezclado" not in df.columns:
             df["Operador_Mezclado"] = df["Operador"]
-            
         if "Tipo_Producto" not in df.columns:
             df["Tipo_Producto"] = "Tintas (Estándar)"
-            
         return df
-        
+    
     return pd.DataFrame(columns=[
         "ID", "Tipo_Producto", "Departamento", "Propela", "Orden_Fabricacion_Lote", "Codigo_PS", 
         "Area", "Tara_Total_Kg", "Tara_OF_Kg", "Operador", "Operador_Mezclado", "Supervisor", "Auditor",
@@ -167,7 +151,6 @@ def guardar_activas(df):
     df.to_csv(ACTIVAS_FILE, index=False)
 
 def cargar_historial():
-    # SOLUCIÓN A LOS 'NONE': Estas columnas son exactamente las que guarda Google Sheets
     columnas_correctas = [
         "ID Orden", "Fecha Fin", "Departamento", "Lote / OF", "Código PS",
         "Área", "Propela / Cowles", "Tara Total (kg)", "Tara OF (kg)",
@@ -180,7 +163,6 @@ def cargar_historial():
     ]
     if os.path.exists(HISTORIAL_FILE):
         df = pd.read_csv(HISTORIAL_FILE)
-        # Asegurar que existan las columnas nuevas, si es un CSV viejo
         for col in columnas_correctas:
             if col not in df.columns:
                 df[col] = ""
@@ -194,9 +176,6 @@ def guardar_en_historial_local(registro):
     df_actualizado = pd.concat([df_actual, nuevo_df], ignore_index=True)
     df_actualizado.to_csv(HISTORIAL_FILE, index=False)
 
-# ---------------------------------------------------------
-# MAPA DE DISPONIBILIDAD DE COWLES
-# ---------------------------------------------------------
 def obtener_mapa_cowles_ocupados(df_activas):
     if df_activas.empty:
         return {}
@@ -227,7 +206,7 @@ if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
     st.rerun()
 
 # ---------------------------------------------------------
-# 1. MONITOR DE MEZCLADO EN COWLES (EN VIVO)
+# 1. MONITOR DE MEZCLADO EN COWLES
 # ---------------------------------------------------------
 if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
     st.title("🌀 Monitor de Mezclado en Cowles")
@@ -237,7 +216,7 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
     df_mezclando = df_activas[df_activas["En_Mezclado"] == True] if not df_activas.empty else pd.DataFrame()
     
     if df_mezclando.empty:
-        st.info("ℹ️ No hay mezclas activas en Cowles en este momento. Las O.F. en preparado o espera están en la pestaña 'Área de Pesado y Espera'.")
+        st.info("ℹ️ No hay mezclas activas en Cowles en este momento.")
     else:
         st.subheader(f"⚡ Agitaciones Activas: {len(df_mezclando)}")
         ahora = datetime.now()
@@ -367,21 +346,20 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
                     guardar_activas(df_activas)
 
                     if exito_gsheets:
-                        st.success(f"✅ Agitación finalizada y registrada con éxito en Google Sheets (`{WORKSHEET_PROPELAS}`).")
+                        st.success(f"✅ Agitación finalizada y registrada con éxito en Google Sheets.")
                     else:
                         st.success(f"✅ Agitación finalizada y registrada en la base de datos local.")
                     st.rerun()
 
 # ---------------------------------------------------------
-# 2. ÁREA DE PESADO Y ESPERA DE O.F. (PREVIO A MEZCLAR)
+# 2. ÁREA DE PESADO Y ESPERA DE O.F.
 # ---------------------------------------------------------
 elif menu == "📦 Área de Pesado y Espera de O.F.":
     st.title("📦 Área de Pesado y Espera de Materiales")
-    st.caption("Administra las O.F. en preparación o pausadas por falta de material antes de pasarlas a agitación en Cowles")
+    st.caption("Administra las O.F. en preparación o pausadas antes de pasarlas a agitación en Cowles")
 
     df_activas = cargar_activas()
     mapa_ocupados = obtener_mapa_cowles_ocupados(df_activas)
-    
     df_espera = df_activas[df_activas["En_Mezclado"] == False] if not df_activas.empty else pd.DataFrame()
 
     if df_espera.empty:
@@ -399,7 +377,6 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                     st.write(f"**Código PS:** `{row['Codigo_PS']}` | **Área:** `{row['Area']}` | **Tipo:** `{row.get('Tipo_Producto', 'Tintas')}`")
                     st.write(f"**Tara Total:** `{row['Tara_Total_Kg']} kg` | **Tara O.F.:** `{row['Tara_OF_Kg']} kg`")
                     st.write(f"**Op. Pesado:** `{row['Operador']}` | **Supervisor:** `{row['Supervisor']}` | **Auditor:** `{row['Auditor']}`")
-                    st.caption(f"Dispensing: {row['Limpieza_Dispensing']} | Chk Tara: {row['Checklist_Tara']} | Chk Limpieza: {row['Checklist_Limpieza']} | Limpieza Propela: {row['Limpieza_Propela']}")
 
                 with col2:
                     nuevo_estatus = st.selectbox(
@@ -412,10 +389,7 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                     opciones_cowles_format = []
                     index_actual = 0
                     for i, c in enumerate(LISTA_PROPELAS):
-                        if c in mapa_ocupados:
-                            label = f"🔴 {c} (OCUPADO por O.F. {mapa_ocupados[c]})"
-                        else:
-                            label = f"🟢 {c}"
+                        label = f"🔴 {c} (OCUPADO por O.F. {mapa_ocupados[c]})" if c in mapa_ocupados else f"🟢 {c}"
                         opciones_cowles_format.append(label)
                         if c == row['Propela']:
                             index_actual = i
@@ -426,7 +400,6 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                         index=index_actual,
                         key=f"prop_{row['ID']}"
                     )
-                    
                     propela_sel = LISTA_PROPELAS[opciones_cowles_format.index(cowles_seleccionado_label)]
 
                     if (nuevo_estatus != row['Estatus_Pesado']) or (propela_sel != row['Propela']):
@@ -436,34 +409,19 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                         st.rerun()
 
                     st.markdown("---")
-                    
                     esta_ocupado = propela_sel in mapa_ocupados
                     if esta_ocupado:
-                        of_ocupante = mapa_ocupados[propela_sel]
-                        st.error(f"🛑 **{propela_sel}** está **OCUPADO** por la O.F. **{of_ocupante}**.")
-                        st.button(f"🚫 No se puede meter a mezclar", key=f"btn_disabled_{row['ID']}", disabled=True, use_container_width=True)
+                        st.error(f"🛑 **{propela_sel}** está **OCUPADO**.")
+                        st.button("🚫 No se puede meter a mezclar", key=f"btn_disabled_{row['ID']}", disabled=True, use_container_width=True)
                     else:
                         if st.button(f"🚀 Meter a Mezclar ({propela_sel})", key=f"btn_start_{row['ID']}", use_container_width=True):
                             df_activas["Hora_Inicio_Mezclado"] = df_activas["Hora_Inicio_Mezclado"].astype(object)
                             df_activas.loc[df_activas["ID"] == row["ID"], "En_Mezclado"] = True
                             df_activas.loc[df_activas["ID"] == row["ID"], "Hora_Inicio_Mezclado"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             guardar_activas(df_activas)
-                            st.success(f"🚀 O.F. {row['Orden_Fabricacion_Lote']} enviada al Monitor de Mezclado en Vivo.")
                             st.rerun()
 
-                with st.expander("✏️ Editar / Corregir Datos y Tabla de Materiales Faltantes", expanded=False):
-                    ec1, ec2, ec3 = st.columns(3)
-                    with ec1:
-                        edit_tara_total = st.number_input("Tara Total (kg):", value=float(row["Tara_Total_Kg"]), key=f"e_tt_{row['ID']}")
-                        edit_tara_of = st.number_input("Tara O.F. (kg):", value=float(row["Tara_OF_Kg"]), key=f"e_tof_{row['ID']}")
-                    with ec2:
-                        edit_op_pesado = st.text_input("Operador Pesado:", value=str(row["Operador"]), key=f"e_op_{row['ID']}")
-                        edit_op_mezclado = st.text_input("Operador Mezclado:", value=str(row["Operador_Mezclado"]) if row["Operador_Mezclado"] else str(row["Operador"]), key=f"e_op_m_{row['ID']}")
-                    with ec3:
-                        edit_limp_prop = st.selectbox("Limpieza Propela:", OPCIONES_LIMPIEZA, index=OPCIONES_LIMPIEZA.index(row["Limpieza_Propela"]) if row["Limpieza_Propela"] in OPCIONES_LIMPIEZA else 0, key=f"e_lp_{row['ID']}")
-                        edit_chk_limp = st.selectbox("Checklist Limpieza:", OPCIONES_CHECKLIST, index=OPCIONES_CHECKLIST.index(row["Checklist_Limpieza"]) if row["Checklist_Limpieza"] in OPCIONES_CHECKLIST else 0, key=f"e_cl_{row['ID']}")
-
-                    st.markdown("**Tabla de Materiales / Adiciones:**")
+                with st.expander("✏️ Editar Materiales y Datos", expanded=False):
                     try:
                         mat_list_actual = json.loads(row["Dificultades_Materiales_JSON"])
                     except:
@@ -472,24 +430,9 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                     df_mat_edit = pd.DataFrame(mat_list_actual)
                     tabla_editada = st.data_editor(df_mat_edit, num_rows="dynamic", use_container_width=True, key=f"editor_edit_{row['ID']}")
 
-                    if st.button("💾 Guardar Cambios en O.F.", key=f"btn_save_edit_{row['ID']}"):
-                        if row.get("Tipo_Producto", "Tintas") == "Tintas (Estándar)":
-                            t_target, r_str, min_p, max_p = calcular_regla_tiempo(edit_tara_total)
-                            df_activas.loc[df_activas["ID"] == row["ID"], "Tiempo_Target_Min"] = t_target
-                            df_activas.loc[df_activas["ID"] == row["ID"], "Rango_Str"] = r_str
-                            df_activas.loc[df_activas["ID"] == row["ID"], "Min_Permitido"] = min_p
-                            df_activas.loc[df_activas["ID"] == row["ID"], "Max_Permitido"] = max_p
-
-                        df_activas.loc[df_activas["ID"] == row["ID"], "Tara_Total_Kg"] = edit_tara_total
-                        df_activas.loc[df_activas["ID"] == row["ID"], "Tara_OF_Kg"] = edit_tara_of
-                        df_activas.loc[df_activas["ID"] == row["ID"], "Operador"] = edit_op_pesado
-                        df_activas.loc[df_activas["ID"] == row["ID"], "Operador_Mezclado"] = edit_op_mezclado
-                        df_activas.loc[df_activas["ID"] == row["ID"], "Limpieza_Propela"] = edit_limp_prop
-                        df_activas.loc[df_activas["ID"] == row["ID"], "Checklist_Limpieza"] = edit_chk_limp
-                        
+                    if st.button("💾 Guardar Cambios en O.F.", key=f"btn_save_edit_{row['ID']}" ):
                         mat_updated_json = json.dumps(tabla_editada.dropna(how="all").to_dict(orient="records"))
                         df_activas.loc[df_activas["ID"] == row["ID"], "Dificultades_Materiales_JSON"] = mat_updated_json
-                        
                         guardar_activas(df_activas)
                         st.success("✅ Cambios guardados correctamente.")
                         st.rerun()
@@ -506,8 +449,6 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
 
     with st.form("form_registro_of"):
         st.subheader("📌 1. Identificación y Generales")
-        
-        # --- AQUÍ ESTÁ EL SELECTOR QUE SOLICITASTE ---
         tipo_producto = st.radio(
             "🧪 Tipo de Producto (Define la regla de tiempos):", 
             ["Tintas (Estándar)", "Recubrimientos (Manual)"], 
@@ -518,16 +459,16 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             depto = st.selectbox("Departamento:", ["T1", "T2"])
-            operador = st.text_input("Operador Pesado:", placeholder="Nombre operador")
+            operador = st.text_input("Operador Pesado:")
         with col2:
             fecha_aud = st.date_input("Fecha:", datetime.now())
-            operador_mezclado_init = st.text_input("Operador Mezclado (Opcional):", placeholder="Si es el mismo, déjalo vacío")
+            operador_mezclado_init = st.text_input("Operador Mezclado (Opcional):")
         with col3:
-            codigo_ps = st.text_input("Código PS:", placeholder="Ej. PS-8821")
-            supervisor = st.text_input("Supervisor:", placeholder="Nombre supervisor")
+            codigo_ps = st.text_input("Código PS:")
+            supervisor = st.text_input("Supervisor:")
         with col4:
-            lote = st.text_input("Lote / O.F.:", placeholder="Ej. 1582548")
-            auditor = st.text_input("Auditor:", placeholder="Nombre auditor")
+            lote = st.text_input("Lote / O.F.:")
+            auditor = st.text_input("Auditor:")
 
         st.markdown("---")
         st.subheader("⚖️ 2. Pesos, Taras e Inspección")
@@ -552,19 +493,18 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
             propela_inicial = LISTA_PROPELAS[opciones_cowles_formateadas.index(cowles_seleccionado_label)]
             estatus_pesado = st.selectbox("Estatus en Pesado:", ESTADOS_PESADO)
 
-        # --- APLICACIÓN DEL ESPACIO MODIFICADO SEGÚN SI ES TINTA O RECUBRIMIENTO ---
         st.markdown("---")
         if tipo_producto == "Tintas (Estándar)":
             tiempo_target, rango_str, min_p, max_p = calcular_regla_tiempo(tara_total)
             st.info(f"📋 **Tiempo Estándar (Tintas) por Tara Total ({tara_total} kg):** `{rango_str}` (Objetivo: `{tiempo_target} min`)")
         else:
-            st.warning("⚠️ **Recubrimientos:** No cuenta con regla estandarizada por Tara. Ingrese el tiempo requerido.")
+            st.warning("⚠️ **Recubrimientos:** Ingrese el tiempo requerido.")
             tiempo_target = st.number_input("⏱️ Ingresar Tiempo de Propela Manual (min):", min_value=1.0, value=15.0, step=1.0)
             rango_str = f"{tiempo_target} min (Manual Recubrimientos)"
             min_p, max_p = tiempo_target, tiempo_target
 
         st.markdown("---")
-        st.subheader("📦 3. Materiales / Observaciones de Adición")
+        st.subheader("📦 3. Materiales / Fórmula de Pesado")
         
         df_mat_default = pd.DataFrame([
             {"CODIGO": "", "KG EN OF": 0.0, "KG AGREGADOS": 0.0, "OBSERVACIONES": ""}
@@ -620,29 +560,94 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
 
             df_actualizado = pd.concat([df_activas, pd.DataFrame([nueva_fila])], ignore_index=True)
             guardar_activas(df_actualizado)
-
-            st.success(f"✅ O.F. **{lote}** registrada exitosamente en el Área de Pesado.")
+            st.success(f"✅ O.F. **{lote}** registrada exitosamente.")
             st.balloons()
 
 # ---------------------------------------------------------
-# 4. HOJA DE PROCESOS (HISTORIAL DIGITAL)
+# 4. HOJA DE PROCESOS (HISTORIAL DIGITAL CON TABLA DE INCIDENCIAS)
 # ---------------------------------------------------------
 elif menu == "📊 Hoja de Procesos (Historial)":
     st.title("📊 Hoja de Procesos Digital")
-    st.caption("Histórico local de auditorías completadas")
+    st.caption("Histórico local de auditorías completadas y desglose de materiales / incidencias")
 
     df_historial = cargar_historial()
 
     if df_historial.empty:
         st.info("No hay auditorías registradas en el historial.")
     else:
-        st.dataframe(df_historial, use_container_width=True)
+        # Mostrar tabla principal resumida
+        st.subheader("📋 Resumen General de Lotes")
+        st.dataframe(df_historial.drop(columns=["Adiciones / Materiales"]), use_container_width=True)
 
+        st.markdown("---")
+        st.subheader("🔍 Desglose Detallado de Materiales e Incidencias por Lote / O.F.")
+        
+        # Selector para elegir de qué O.F. ver el detalle limpio de materiales
+        lotes_disponibles = df_historial["Lote / OF"].unique().tolist()
+        lote_seleccionado = st.selectbox("Seleccione la O.F. o Lote para revisar sus materiales y diferencias:", lotes_disponibles)
+
+        if lote_seleccionado:
+            fila_lote = df_historial[df_historial["Lote / OF"] == lote_seleccionado].iloc[0]
+            json_materiales = fila_lote["Adiciones / Materiales"]
+
+            st.write(f"**Código PS:** `{fila_lote['Código PS']}` | **Área:** `{fila_lote['Área']}` | **Fecha Fin:** `{fila_lote['Fecha Fin']}`")
+
+            try:
+                lista_mats = json.loads(json_materiales)
+            except:
+                lista_mats = []
+
+            if lista_mats:
+                df_mats = pd.DataFrame(lista_mats)
+                
+                # Normalizar nombres de columnas por seguridad
+                df_mats.columns = [str(c).upper().strip() for c in df_mats.columns]
+                
+                # Asegurar columnas estándar
+                for col_requerida in ["CODIGO", "KG EN OF", "KG AGREGADOS", "OBSERVACIONES"]:
+                    if col_requerida not in df_mats.columns:
+                        df_mats[col_requerida] = ""
+
+                # CALCULAR DIFERENCIA AUTOMÁTICA (KG AGREGADOS - KG EN OF)
+                df_mats["KG EN OF"] = pd.to_numeric(df_mats["KG EN OF"], errors="coerce").fillna(0.0)
+                df_mats["KG AGREGADOS"] = pd.to_numeric(df_mats["KG AGREGADOS"], errors="coerce").fillna(0.0)
+                
+                df_mats["DIFERENCIA (kg)"] = df_mats["KG AGREGADOS"] - df_mats["KG EN OF"]
+                
+                # Crear columna de incidencias automática
+                def evaluar_incidencia(row):
+                    diff = abs(row["DIFERENCIA (kg)"])
+                    obs = str(row["OBSERVACIONES"]).strip()
+                    if diff > 0.01 or (obs and obs.lower() != "nan" and obs != ""):
+                        return "⚠️ INCIDENCIA"
+                    return "✔️ Conforme"
+
+                df_mats["ESTATUS / INCIDENCIA"] = df_mats.apply(evaluar_incidencia, axis=1)
+
+                # Reordenar columnas para visualización impecable
+                cols_ordenadas = ["CODIGO", "KG EN OF", "KG AGREGADOS", "DIFERENCIA (kg)", "ESTATUS / INCIDENCIA", "OBSERVACIONES"]
+                df_mats = df_mats[[c for c in cols_ordenadas if c in df_mats.columns]]
+
+                # Filtrar solo materiales con incidencias si el usuario prefiere ver puras anomalías, o mostrar todo limpio
+                solo_con_incidencias = st.checkbox("🔍 Mostrar únicamente materiales con diferencias o incidencias en este lote", value=False)
+                
+                if solo_con_incidencias:
+                    df_mostrar = df_mats[df_mats["ESTATUS / INCIDENCIA"] == "⚠️ INCIDENCIA"]
+                    if df_mostrar.empty:
+                        st.success("✨ ¡Excelente! Este lote no registra diferencias de peso ni observaciones en sus materiales.")
+                    else:
+                        st.dataframe(df_mostrar, use_container_width=True)
+                else:
+                    st.dataframe(df_mats, use_container_width=True)
+            else:
+                st.info("No hay registros detallados de materiales para esta O.F.")
+
+        st.markdown("---")
         csv_bytes = df_historial.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="📥 Descargar Hoja de Procesos en CSV / Excel",
+            label="📥 Descargar Hoja de Procesos Completa en CSV",
             data=csv_bytes,
-            file_name=f"hoja_de_procesos_propelas_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            file_name=f"hoja_de_procesos_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv",
             use_container_width=True
         )
