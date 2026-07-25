@@ -28,13 +28,11 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-LISTA_PROPELAS = [
-    "Cowles 01 - Agitador Neumático 100L",
-    "Cowles 02 - Disco Alta Velocidad",
-    "Cowles 03 - Agitador Servomotor Principal",
-    "Cowles 04 - Propela Marina Heavy Duty",
-    "Cowles 05 - Tanque Pigmentos Central",
-    "Cowles 06 - Mezclador Auxiliar Línea Solventes"
+# ---------------------------------------------------------
+# NUEVA NOMENCLATURA DE COWLES (PTPLSME)
+# ---------------------------------------------------------
+LISTA_PROPELAS = [f"PTPLSME{i:02d} - Tintas" for i in range(1, 12)] + [
+    f"PTPLSME{i:02d} - Recubrimientos" for i in range(12, 16)
 ]
 
 ESTADOS_PESADO = [
@@ -43,8 +41,11 @@ ESTADOS_PESADO = [
     "🟢 Pesado Concluido - Listo para Mezclar"
 ]
 
+OPCIONES_LIMPIEZA = ["Buena", "Regular", "Mala"]
+OPCIONES_CHECKLIST = ["SÍ", "NO", "N/A"]
+
 # ---------------------------------------------------------
-# FUNCIÓN DE CONEXIÓN A GOOGLE SHEETS
+# CONEXIÓN A GOOGLE SHEETS
 # ---------------------------------------------------------
 @st.cache_resource
 def conectar_google_sheets():
@@ -79,7 +80,8 @@ def guardar_en_google_sheets(datos):
             datos.get("Tara Total (kg)", ""),
             datos.get("Tara OF (kg)", ""),
             datos.get("Estatus Pesado", ""),
-            datos.get("Operador", ""),
+            datos.get("Operador Pesado", ""),
+            datos.get("Operador Mezclado", ""),
             datos.get("Supervisor", ""),
             datos.get("Auditor", ""),
             datos.get("Limpieza Dispensing", ""),
@@ -130,11 +132,11 @@ def cargar_activas():
     if os.path.exists(ACTIVAS_FILE):
         df = pd.read_csv(ACTIVAS_FILE)
         
-        # Corregir tipos de datos de texto para evitar TypeError al actualizar
+        # Corregir columnas de texto/objeto
         columnas_texto = [
             "Departamento", "Propela", "Orden_Fabricacion_Lote", "Codigo_PS", 
-            "Area", "Operador", "Supervisor", "Auditor", "Limpieza_Dispensing", 
-            "Checklist_Tara", "Checklist_Limpieza", "Limpieza_Propela", 
+            "Area", "Operador", "Operador_Mezclado", "Supervisor", "Auditor", 
+            "Limpieza_Dispensing", "Checklist_Tara", "Checklist_Limpieza", "Limpieza_Propela", 
             "Estatus_Pesado", "Dificultades_Materiales_JSON", "Rango_Str", 
             "Hora_Inicio_Mezclado"
         ]
@@ -145,11 +147,14 @@ def cargar_activas():
         if "En_Mezclado" in df.columns:
             df["En_Mezclado"] = df["En_Mezclado"].astype(bool)
             
+        if "Operador_Mezclado" not in df.columns:
+            df["Operador_Mezclado"] = df["Operador"]
+            
         return df
         
     return pd.DataFrame(columns=[
         "ID", "Departamento", "Propela", "Orden_Fabricacion_Lote", "Codigo_PS", 
-        "Area", "Tara_Total_Kg", "Tara_OF_Kg", "Operador", "Supervisor", "Auditor",
+        "Area", "Tara_Total_Kg", "Tara_OF_Kg", "Operador", "Operador_Mezclado", "Supervisor", "Auditor",
         "Limpieza_Dispensing", "Checklist_Tara", "Checklist_Limpieza",
         "Limpieza_Propela", "Estatus_Pesado", "En_Mezclado", "Dificultades_Materiales_JSON", 
         "Tiempo_Target_Min", "Min_Permitido", "Max_Permitido", "Rango_Str", "Hora_Inicio_Mezclado"
@@ -163,7 +168,7 @@ def cargar_historial():
         return pd.read_csv(HISTORIAL_FILE)
     return pd.DataFrame(columns=[
         "Fecha_Hora_Fin", "Departamento", "Propela", "Orden_Fabricacion_Lote", "Codigo_PS",
-        "Area", "Tara_Total_Kg", "Tara_OF_Kg", "Operador", "Supervisor", "Auditor",
+        "Area", "Tara_Total_Kg", "Tara_OF_Kg", "Operador_Pesado", "Operador_Mezclado", "Supervisor", "Auditor",
         "Limpieza_Dispensing", "Checklist_Tara", "Checklist_Limpieza",
         "Limpieza_Propela", "Estatus_Pesado", "Tiempo_Std_Min", "Rango_Permitido", 
         "Tiempo_Real_Min", "Tiempo_Prom_Dispersion", "Dificultades_Materiales", 
@@ -176,6 +181,19 @@ def guardar_en_historial_local(registro):
     nuevo_df = pd.DataFrame([registro])
     df_actualizado = pd.concat([df_actual, nuevo_df], ignore_index=True)
     df_actualizado.to_csv(HISTORIAL_FILE, index=False)
+
+# ---------------------------------------------------------
+# MAPA DE DISPONIBILIDAD DE COWLES
+# ---------------------------------------------------------
+def obtener_mapa_cowles_ocupados(df_activas):
+    """Retorna un diccionario {nombre_cowles: id_orden} con los equipos actualmente en mezclado"""
+    if df_activas.empty:
+        return {}
+    df_mezclando = df_activas[df_activas["En_Mezclado"] == True]
+    mapa = {}
+    for _, r in df_mezclando.iterrows():
+        mapa[r["Propela"]] = str(r["Orden_Fabricacion_Lote"])
+    return mapa
 
 # ---------------------------------------------------------
 # NAVEGACIÓN Y MENÚ LATERAL
@@ -198,7 +216,7 @@ if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
     st.rerun()
 
 # ---------------------------------------------------------
-# 1. MONITOR DE MEZCLADO EN COWLES (SOLO MEZCLADO ACTIVO)
+# 1. MONITOR DE MEZCLADO EN COWLES (EN VIVO)
 # ---------------------------------------------------------
 if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
     st.title("🌀 Monitor de Mezclado en Cowles")
@@ -231,8 +249,8 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
                     st.markdown(f"### {row['Propela']}")
                     st.write(f"**O.F. / Lote:** `{row['Orden_Fabricacion_Lote']}` | **Código PS:** `{row['Codigo_PS']}`")
                     st.write(f"**Tara Total:** `{row['Tara_Total_Kg']} kg` | **Tara O.F.:** `{row['Tara_OF_Kg']} kg`")
-                    st.write(f"**Op:** `{row['Operador']}` | **Sup:** `{row['Supervisor']}` | **Auditor:** `{row['Auditor']}`")
-                    st.caption(f"Inicio Mezclado: {hora_inicio.strftime('%H:%M:%S')} | Limpieza Propela: {row['Limpieza_Propela']}")
+                    st.write(f"**Op. Pesado:** `{row['Operador']}` | **Sup:** `{row['Supervisor']}` | **Auditor:** `{row['Auditor']}`")
+                    st.caption(f"Inicio Mezclado: {hora_inicio.strftime('%H:%M:%S')}")
                 
                 with c2:
                     st.metric("Tiempo Mezclando", f"{minutos_transcurridos:.1f} min", delta=f"Rango Std: {row['Rango_Str']}")
@@ -254,6 +272,31 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
                         st.info(f"⏳ Agitando... Faltan approx. **{falta:.1f} min** para el tiempo mínimo.")
 
                 st.markdown("---")
+                st.subheader("⚙️ Configuración del Proceso de Mezclado")
+                
+                col_m1, col_m2, col_m3 = st.columns(3)
+                with col_m1:
+                    op_mezclado = st.text_input(
+                        "👨‍🔧 Operador de Mezclado:", 
+                        value=row['Operador_Mezclado'] if row['Operador_Mezclado'] else row['Operador'], 
+                        key=f"op_mez_{row['ID']}"
+                    )
+                with col_m2:
+                    limp_propela_val = st.selectbox(
+                        "Limpieza Propela:", 
+                        OPCIONES_LIMPIEZA, 
+                        index=OPCIONES_LIMPIEZA.index(row['Limpieza_Propela']) if row['Limpieza_Propela'] in OPCIONES_LIMPIEZA else 0,
+                        key=f"limp_prop_mez_{row['ID']}"
+                    )
+                with col_m3:
+                    chk_limp_val = st.selectbox(
+                        "Checklist Limpieza:", 
+                        OPCIONES_CHECKLIST, 
+                        index=OPCIONES_CHECKLIST.index(row['Checklist_Limpieza']) if row['Checklist_Limpieza'] in OPCIONES_CHECKLIST else 0,
+                        key=f"chk_limp_mez_{row['ID']}"
+                    )
+
+                st.markdown("---")
                 st.subheader("🏁 Finalizar y Registrar Salida de Agitación")
                 
                 col_c1, col_c2, col_c3 = st.columns(3)
@@ -262,7 +305,7 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
                     paro_emergencia = st.checkbox("⚠️ Paro de Emergencia / Falla", key=f"paro_{row['ID']}")
 
                 with col_c2:
-                    firma_op = st.text_input("✍️ Firma Operador:", value=row['Operador'], key=f"f_op_{row['ID']}")
+                    firma_op = st.text_input("✍️ Firma Operador:", value=op_mezclado, key=f"f_op_{row['ID']}")
                     obs = st.text_area("Observaciones:", key=f"obs_{row['ID']}", placeholder="Muestras OK, adición de solvente...")
 
                 with col_c3:
@@ -285,13 +328,14 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
                         "Tara Total (kg)": row["Tara_Total_Kg"],
                         "Tara OF (kg)": row["Tara_OF_Kg"],
                         "Estatus Pesado": row["Estatus_Pesado"],
-                        "Operador": row["Operador"],
+                        "Operador Pesado": row["Operador"],
+                        "Operador Mezclado": op_mezclado,
                         "Supervisor": row["Supervisor"],
                         "Auditor": row["Auditor"],
                         "Limpieza Dispensing": row["Limpieza_Dispensing"],
                         "Checklist Tara": row["Checklist_Tara"],
-                        "Checklist Limpieza": row["Checklist_Limpieza"],
-                        "Limpieza Propela": row["Limpieza_Propela"],
+                        "Checklist Limpieza": chk_limp_val,
+                        "Limpieza Propela": limp_propela_val,
                         "Tiempo Std (min)": row["Tiempo_Target_Min"],
                         "Rango Permitido": row["Rango_Str"],
                         "Tiempo Real Agitación (min)": tiempo_final,
@@ -321,9 +365,11 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
 # ---------------------------------------------------------
 elif menu == "📦 Área de Pesado y Espera de O.F.":
     st.title("📦 Área de Pesado y Espera de Materiales")
-    st.caption("Administra las O.F. en preparación antes de pasarlas a agitación en Cowles")
+    st.caption("Administra las O.F. en preparación o pausadas por falta de material antes de pasarlas a agitación en Cowles")
 
     df_activas = cargar_activas()
+    mapa_ocupados = obtener_mapa_cowles_ocupados(df_activas)
+    
     df_espera = df_activas[df_activas["En_Mezclado"] == False] if not df_activas.empty else pd.DataFrame()
 
     if df_espera.empty:
@@ -340,8 +386,8 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                 with col1:
                     st.write(f"**Código PS:** `{row['Codigo_PS']}` | **Área:** `{row['Area']}`")
                     st.write(f"**Tara Total:** `{row['Tara_Total_Kg']} kg` | **Tara O.F.:** `{row['Tara_OF_Kg']} kg`")
-                    st.write(f"**Operador:** `{row['Operador']}` | **Supervisor:** `{row['Supervisor']}` | **Auditor:** `{row['Auditor']}`")
-                    st.caption(f"Dispensing: {row['Limpieza_Dispensing']} | Chk Tara: {row['Checklist_Tara']} | Chk Limpieza: {row['Checklist_Limpieza']}")
+                    st.write(f"**Op. Pesado:** `{row['Operador']}` | **Supervisor:** `{row['Supervisor']}` | **Auditor:** `{row['Auditor']}`")
+                    st.caption(f"Dispensing: {row['Limpieza_Dispensing']} | Chk Tara: {row['Checklist_Tara']} | Chk Limpieza: {row['Checklist_Limpieza']} | Limpieza Propela: {row['Limpieza_Propela']}")
 
                 with col2:
                     nuevo_estatus = st.selectbox(
@@ -351,12 +397,27 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                         key=f"est_pes_{row['ID']}"
                     )
                     
-                    propela_sel = st.selectbox(
+                    # Generar lista de opciones destacando los Cowles Ocupados
+                    opciones_cowles_format = []
+                    index_actual = 0
+                    for i, c in enumerate(LISTA_PROPELAS):
+                        if c in mapa_ocupados:
+                            label = f"🔴 {c} (OCUPADO por O.F. {mapa_ocupados[c]})"
+                        else:
+                            label = f"🟢 {c}"
+                        opciones_cowles_format.append(label)
+                        if c == row['Propela']:
+                            index_actual = i
+
+                    cowles_seleccionado_label = st.selectbox(
                         "Asignar Cowles / Propela:",
-                        LISTA_PROPELAS,
-                        index=LISTA_PROPELAS.index(row['Propela']) if row['Propela'] in LISTA_PROPELAS else 0,
+                        opciones_cowles_format,
+                        index=index_actual,
                         key=f"prop_{row['ID']}"
                     )
+                    
+                    # Extraer el nombre limpio de la propela
+                    propela_sel = LISTA_PROPELAS[opciones_cowles_format.index(cowles_seleccionado_label)]
 
                     if (nuevo_estatus != row['Estatus_Pesado']) or (propela_sel != row['Propela']):
                         df_activas.loc[df_activas["ID"] == row["ID"], "Estatus_Pesado"] = nuevo_estatus
@@ -364,15 +425,66 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                         guardar_activas(df_activas)
                         st.rerun()
 
-                    # PASAR A MEZCLAR EN COWLES
                     st.markdown("---")
-                    if st.button(f"🚀 Meter a Mezclar ({propela_sel})", key=f"btn_start_{row['ID']}", use_container_width=True):
-                        # Asegurar tipo de objeto antes de asignar texto
-                        df_activas["Hora_Inicio_Mezclado"] = df_activas["Hora_Inicio_Mezclado"].astype(object)
-                        df_activas.loc[df_activas["ID"] == row["ID"], "En_Mezclado"] = True
-                        df_activas.loc[df_activas["ID"] == row["ID"], "Hora_Inicio_Mezclado"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # VALIDACIÓN DE BLOQUEO DE COWLES
+                    esta_ocupado = propela_sel in mapa_ocupados
+                    if esta_ocupado:
+                        of_ocupante = mapa_ocupados[propela_sel]
+                        st.error(f"🛑 **{propela_sel}** está **OCUPADO** actualmente por la O.F. **{of_ocupante}**. Espera a que termine o asigna otro Cowles libre.")
+                        st.button(f"🚫 No se puede meter a mezclar", key=f"btn_disabled_{row['ID']}", disabled=True, use_container_width=True)
+                    else:
+                        if st.button(f"🚀 Meter a Mezclar ({propela_sel})", key=f"btn_start_{row['ID']}", use_container_width=True):
+                            df_activas["Hora_Inicio_Mezclado"] = df_activas["Hora_Inicio_Mezclado"].astype(object)
+                            df_activas.loc[df_activas["ID"] == row["ID"], "En_Mezclado"] = True
+                            df_activas.loc[df_activas["ID"] == row["ID"], "Hora_Inicio_Mezclado"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            guardar_activas(df_activas)
+                            st.success(f"🚀 O.F. {row['Orden_Fabricacion_Lote']} enviada al Monitor de Mezclado en Vivo.")
+                            st.rerun()
+
+                # BLOQUE DE EDICIÓN DE MATERIALES / CORRECCIÓN SI ESTABA PAUSADO O CON ERRORES
+                with st.expander("✏️ Editar / Corregir Datos y Tabla de Materiales Faltantes", expanded=False):
+                    st.caption("Si agregaron un material faltante o hubo una equivocación en el registro, edita los datos aquí antes de iniciar el mezclado:")
+                    
+                    ec1, ec2, ec3 = st.columns(3)
+                    with ec1:
+                        edit_tara_total = st.number_input("Tara Total (kg):", value=float(row["Tara_Total_Kg"]), key=f"e_tt_{row['ID']}")
+                        edit_tara_of = st.number_input("Tara O.F. (kg):", value=float(row["Tara_OF_Kg"]), key=f"e_tof_{row['ID']}")
+                    with ec2:
+                        edit_op_pesado = st.text_input("Operador Pesado:", value=str(row["Operador"]), key=f"e_op_{row['ID']}")
+                        edit_op_mezclado = st.text_input("Operador Mezclado:", value=str(row["Operador_Mezclado"]) if row["Operador_Mezclado"] else str(row["Operador"]), key=f"e_op_m_{row['ID']}")
+                    with ec3:
+                        edit_limp_prop = st.selectbox("Limpieza Propela:", OPCIONES_LIMPIEZA, index=OPCIONES_LIMPIEZA.index(row["Limpieza_Propela"]) if row["Limpieza_Propela"] in OPCIONES_LIMPIEZA else 0, key=f"e_lp_{row['ID']}")
+                        edit_chk_limp = st.selectbox("Checklist Limpieza:", OPCIONES_CHECKLIST, index=OPCIONES_CHECKLIST.index(row["Checklist_Limpieza"]) if row["Checklist_Limpieza"] in OPCIONES_CHECKLIST else 0, key=f"e_cl_{row['ID']}")
+
+                    st.markdown("**Tabla de Materiales / Adiciones:**")
+                    try:
+                        mat_list_actual = json.loads(row["Dificultades_Materiales_JSON"])
+                    except:
+                        mat_list_actual = [{"CODIGO": "", "KG EN OF": 0.0, "KG AGREGADOS": 0.0, "OBSERVACIONES": ""}]
+                    
+                    df_mat_edit = pd.DataFrame(mat_list_actual)
+                    tabla_editada = st.data_editor(df_mat_edit, num_rows="dynamic", use_container_width=True, key=f"editor_edit_{row['ID']}")
+
+                    if st.button("💾 Guardar Cambios en O.F.", key=f"btn_save_edit_{row['ID']}"):
+                        t_target, r_str, min_p, max_p = calcular_regla_tiempo(edit_tara_total)
+                        
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Tara_Total_Kg"] = edit_tara_total
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Tara_OF_Kg"] = edit_tara_of
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Operador"] = edit_op_pesado
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Operador_Mezclado"] = edit_op_mezclado
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Limpieza_Propela"] = edit_limp_prop
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Checklist_Limpieza"] = edit_chk_limp
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Tiempo_Target_Min"] = t_target
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Rango_Str"] = r_str
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Min_Permitido"] = min_p
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Max_Permitido"] = max_p
+                        
+                        mat_updated_json = json.dumps(tabla_editada.dropna(how="all").to_dict(orient="records"))
+                        df_activas.loc[df_activas["ID"] == row["ID"], "Dificultades_Materiales_JSON"] = mat_updated_json
+                        
                         guardar_activas(df_activas)
-                        st.success(f"🚀 O.F. {row['Orden_Fabricacion_Lote']} enviada al Monitor de Mezclado en Vivo.")
+                        st.success("✅ Cambios guardados correctamente.")
                         st.rerun()
 
 # ---------------------------------------------------------
@@ -383,6 +495,7 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
     st.caption("Captura inicial del lote antes de pasar a agitación")
 
     df_activas = cargar_activas()
+    mapa_ocupados = obtener_mapa_cowles_ocupados(df_activas)
 
     with st.form("form_registro_of"):
         st.subheader("📌 1. Identificación y Generales")
@@ -390,16 +503,16 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
         
         with col1:
             depto = st.selectbox("Departamento:", ["T1", "T2"])
-            operador = st.text_input("Operador:", placeholder="Nombre operador")
+            operador = st.text_input("Operador Pesado:", placeholder="Nombre operador pesado")
         with col2:
             fecha_aud = st.date_input("Fecha:", datetime.now())
-            supervisor = st.text_input("Supervisor:", placeholder="Nombre supervisor")
+            operador_mezclado_init = st.text_input("Operador Mezclado (Opcional):", placeholder="Igual al de pesado si está vacío")
         with col3:
             codigo_ps = st.text_input("Código PS:", placeholder="Ej. PS-8821")
-            auditor = st.text_input("Auditor:", placeholder="Nombre auditor")
+            supervisor = st.text_input("Supervisor:", placeholder="Nombre supervisor")
         with col4:
             lote = st.text_input("Lote / O.F.:", placeholder="Ej. 1582548")
-            area = st.selectbox("Área:", ["Manual Dispensing", "Automático"])
+            auditor = st.text_input("Auditor:", placeholder="Nombre auditor")
 
         st.markdown("---")
         st.subheader("⚖️ 2. Pesos, Taras e Inspección")
@@ -408,14 +521,23 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
         with c1:
             tara_total = st.number_input("Tara Total (kg):", min_value=0.0, value=250.0, step=10.0)
             tara_of = st.number_input("Tara O.F. (kg):", min_value=0.0, value=15.0, step=0.5)
+            area = st.selectbox("Área:", ["Manual Dispensing", "Automático"])
         with c2:
-            limpieza_dispensing = st.selectbox("Limpieza Dispensing:", ["Buena", "Regular", "Mala"])
-            limpieza_propela = st.selectbox("Limpieza Propela:", ["Buena", "Regular", "Mala"])
+            limpieza_dispensing = st.selectbox("Limpieza Dispensing:", OPCIONES_LIMPIEZA)
+            limpieza_propela = st.selectbox("Limpieza Propela:", OPCIONES_LIMPIEZA)
         with c3:
-            chk_tara = st.selectbox("Checklist Tara:", ["SÍ", "NO", "N/A"])
-            chk_limpieza = st.selectbox("Checklist Limpieza:", ["SÍ", "NO", "N/A"])
+            chk_tara = st.selectbox("Checklist Tara:", OPCIONES_CHECKLIST)
+            chk_limpieza = st.selectbox("Checklist Limpieza:", OPCIONES_CHECKLIST)
         with c4:
-            propela_inicial = st.selectbox("Cowles Propuesto:", LISTA_PROPELAS)
+            # Lista formateada con indicación de estado
+            opciones_cowles_formateadas = [
+                f"🔴 {c} (OCUPADO por O.F. {mapa_ocupados[c]})" if c in mapa_ocupados else f"🟢 {c}"
+                for c in LISTA_PROPELAS
+            ]
+            
+            cowles_seleccionado_label = st.selectbox("Cowles Propuesto:", opciones_cowles_formateadas)
+            propela_inicial = LISTA_PROPELAS[opciones_cowles_formateadas.index(cowles_seleccionado_label)]
+            
             estatus_pesado = st.selectbox("Estatus en Pesado:", ESTADOS_PESADO)
 
         tiempo_target, rango_str, min_p, max_p = calcular_regla_tiempo(tara_total)
@@ -440,12 +562,14 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
 
     if btn_iniciar:
         if not lote or not operador or not auditor:
-            st.error("❌ Los campos O.F./Lote, Operador y Auditor son obligatorios.")
+            st.error("❌ Los campos O.F./Lote, Operador Pesado y Auditor son obligatorios.")
         else:
             mat_dict = tabla_materiales.dropna(how="all").to_dict(orient="records")
             mat_json_str = json.dumps(mat_dict)
 
             nuevo_id = int(datetime.now().timestamp())
+            op_mezclado_final = operador_mezclado_init if operador_mezclado_init.strip() else operador
+
             nueva_fila = {
                 "ID": nuevo_id,
                 "Departamento": depto,
@@ -456,6 +580,7 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
                 "Tara_Total_Kg": tara_total,
                 "Tara_OF_Kg": tara_of,
                 "Operador": operador,
+                "Operador_Mezclado": op_mezclado_final,
                 "Supervisor": supervisor,
                 "Auditor": auditor,
                 "Limpieza_Dispensing": limpieza_dispensing,
