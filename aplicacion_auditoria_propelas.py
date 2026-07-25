@@ -128,7 +128,25 @@ def calcular_regla_tiempo(tara_total_kg):
 # ---------------------------------------------------------
 def cargar_activas():
     if os.path.exists(ACTIVAS_FILE):
-        return pd.read_csv(ACTIVAS_FILE)
+        df = pd.read_csv(ACTIVAS_FILE)
+        
+        # Corregir tipos de datos de texto para evitar TypeError al actualizar
+        columnas_texto = [
+            "Departamento", "Propela", "Orden_Fabricacion_Lote", "Codigo_PS", 
+            "Area", "Operador", "Supervisor", "Auditor", "Limpieza_Dispensing", 
+            "Checklist_Tara", "Checklist_Limpieza", "Limpieza_Propela", 
+            "Estatus_Pesado", "Dificultades_Materiales_JSON", "Rango_Str", 
+            "Hora_Inicio_Mezclado"
+        ]
+        for col in columnas_texto:
+            if col in df.columns:
+                df[col] = df[col].fillna("").astype(object)
+                
+        if "En_Mezclado" in df.columns:
+            df["En_Mezclado"] = df["En_Mezclado"].astype(bool)
+            
+        return df
+        
     return pd.DataFrame(columns=[
         "ID", "Departamento", "Propela", "Orden_Fabricacion_Lote", "Codigo_PS", 
         "Area", "Tara_Total_Kg", "Tara_OF_Kg", "Operador", "Supervisor", "Auditor",
@@ -196,7 +214,7 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
         ahora = datetime.now()
         
         for idx, row in df_mezclando.iterrows():
-            hora_inicio = datetime.strptime(row["Hora_Inicio_Mezclado"], "%Y-%m-%d %H:%M:%S")
+            hora_inicio = datetime.strptime(str(row["Hora_Inicio_Mezclado"]), "%Y-%m-%d %H:%M:%S")
             minutos_transcurridos = (ahora - hora_inicio).total_seconds() / 60.0
             
             titulo_bloque = (
@@ -256,7 +274,6 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
                     
                     estatus_audit = "PARO DE EMERGENCIA" if paro_emergencia else ("CUMPLE" if cumple else "DESVIACIÓN")
 
-                    # Diccionario para Google Sheets
                     datos_gsheets = {
                         "ID Orden": row["ID"],
                         "Fecha Fin": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -287,11 +304,9 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
                         "Firma Encargado": firma_enc
                     }
 
-                    # Guardar en local y enviar a Google Sheets
                     guardar_en_historial_local(datos_gsheets)
                     exito_gsheets = guardar_en_google_sheets(datos_gsheets)
 
-                    # Eliminar de activas
                     df_activas = df_activas[df_activas["ID"] != row["ID"]]
                     guardar_activas(df_activas)
 
@@ -329,7 +344,6 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                     st.caption(f"Dispensing: {row['Limpieza_Dispensing']} | Chk Tara: {row['Checklist_Tara']} | Chk Limpieza: {row['Checklist_Limpieza']}")
 
                 with col2:
-                    # Cambiar estado en Pesado
                     nuevo_estatus = st.selectbox(
                         "Estatus en Pesado:",
                         ESTADOS_PESADO,
@@ -350,9 +364,11 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                         guardar_activas(df_activas)
                         st.rerun()
 
-                    # BOTÓN PARA PASAR A MEZCLAR EN COWLES
+                    # PASAR A MEZCLAR EN COWLES
                     st.markdown("---")
                     if st.button(f"🚀 Meter a Mezclar ({propela_sel})", key=f"btn_start_{row['ID']}", use_container_width=True):
+                        # Asegurar tipo de objeto antes de asignar texto
+                        df_activas["Hora_Inicio_Mezclado"] = df_activas["Hora_Inicio_Mezclado"].astype(object)
                         df_activas.loc[df_activas["ID"] == row["ID"], "En_Mezclado"] = True
                         df_activas.loc[df_activas["ID"] == row["ID"], "Hora_Inicio_Mezclado"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         guardar_activas(df_activas)
@@ -434,8 +450,8 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
                 "ID": nuevo_id,
                 "Departamento": depto,
                 "Propela": propela_inicial,
-                "Orden_Fabricacion_Lote": lote,
-                "Codigo_PS": codigo_ps,
+                "Orden_Fabricacion_Lote": str(lote),
+                "Codigo_PS": str(codigo_ps),
                 "Area": area,
                 "Tara_Total_Kg": tara_total,
                 "Tara_OF_Kg": tara_of,
