@@ -6,9 +6,6 @@ import json
 import gspread
 from google.oauth2.service_account import Credentials
 
-# ---------------------------------------------------------
-# CONFIGURACIÓN GENERAL Y GOOGLE SHEETS
-# ---------------------------------------------------------
 st.set_page_config(
     page_title="Control de Procesos - Pesado y Agitación",
     page_icon="⚙️",
@@ -18,7 +15,6 @@ st.set_page_config(
 ACTIVAS_FILE = "auditorias_activas.csv"
 HISTORIAL_FILE = "hoja_de_procesos_agitacion.csv"
 
-# Conexión a Google Sheets (Tu archivo JSON)
 GOOGLE_CREDENTIALS = "mes-molienda-sanchez-7a9a01e5553d.json"
 GOOGLE_SHEET_NAME = "Control_Molienda_MES"
 WORKSHEET_PROPELAS = "Historial_Propelas"
@@ -41,9 +37,6 @@ ESTADOS_PESADO = [
 OPCIONES_LIMPIEZA = ["Buena", "Regular", "Mala"]
 OPCIONES_CHECKLIST = ["SÍ", "NO", "N/A"]
 
-# ---------------------------------------------------------
-# CONEXIÓN A GOOGLE SHEETS
-# ---------------------------------------------------------
 @st.cache_resource
 def conectar_google_sheets():
     try:
@@ -185,9 +178,7 @@ def obtener_mapa_cowles_ocupados(df_activas):
         mapa[r["Propela"]] = str(r["Orden_Fabricacion_Lote"])
     return mapa
 
-# ---------------------------------------------------------
-# NAVEGACIÓN Y MENÚ LATERAL
-# ---------------------------------------------------------
+
 st.sidebar.title("⚙️ Control Molienda MES")
 st.sidebar.caption("Módulo de Pesado y Agitación en Cowles")
 
@@ -205,9 +196,7 @@ st.sidebar.markdown("---")
 if st.sidebar.button("🔄 Refrescar Pantalla", use_container_width=True):
     st.rerun()
 
-# ---------------------------------------------------------
-# 1. MONITOR DE MEZCLADO EN COWLES
-# ---------------------------------------------------------
+
 if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
     st.title("🌀 Monitor de Mezclado en Cowles")
     st.caption("Seguimiento exclusivo de O.F. que se están agitando en tanque en este momento")
@@ -351,9 +340,7 @@ if menu == "🌀 Monitor de Mezclado en Cowles (En Vivo)":
                         st.success(f"✅ Agitación finalizada y registrada en la base de datos local.")
                     st.rerun()
 
-# ---------------------------------------------------------
-# 2. ÁREA DE PESADO Y ESPERA DE O.F.
-# ---------------------------------------------------------
+
 elif menu == "📦 Área de Pesado y Espera de O.F.":
     st.title("📦 Área de Pesado y Espera de Materiales")
     st.caption("Administra las O.F. en preparación o pausadas antes de pasarlas a agitación en Cowles")
@@ -437,9 +424,7 @@ elif menu == "📦 Área de Pesado y Espera de O.F.":
                         st.success("✅ Cambios guardados correctamente.")
                         st.rerun()
 
-# ---------------------------------------------------------
-# 3. REGISTRAR NUEVA O.F. (CAPTURA EN PESADO)
-# ---------------------------------------------------------
+
 elif menu == "📋 Registrar Nueva O.F. (Pesado)":
     st.title("📄 Registrar Nueva O.F. en Pesado")
     st.caption("Captura inicial del lote antes de pasar a agitación")
@@ -563,9 +548,7 @@ elif menu == "📋 Registrar Nueva O.F. (Pesado)":
             st.success(f"✅ O.F. **{lote}** registrada exitosamente.")
             st.balloons()
 
-# ---------------------------------------------------------
-# 4. HOJA DE PROCESOS (HISTORIAL DIGITAL CON TABLA DE INCIDENCIAS)
-# ---------------------------------------------------------
+
 elif menu == "📊 Hoja de Procesos (Historial)":
     st.title("📊 Hoja de Procesos Digital")
     st.caption("Histórico local de auditorías completadas y desglose de materiales / incidencias")
@@ -575,14 +558,12 @@ elif menu == "📊 Hoja de Procesos (Historial)":
     if df_historial.empty:
         st.info("No hay auditorías registradas en el historial.")
     else:
-        # Mostrar tabla principal resumida
         st.subheader("📋 Resumen General de Lotes")
         st.dataframe(df_historial.drop(columns=["Adiciones / Materiales"]), use_container_width=True)
 
         st.markdown("---")
         st.subheader("🔍 Desglose Detallado de Materiales e Incidencias por Lote / O.F.")
         
-        # Selector para elegir de qué O.F. ver el detalle limpio de materiales
         lotes_disponibles = df_historial["Lote / OF"].unique().tolist()
         lote_seleccionado = st.selectbox("Seleccione la O.F. o Lote para revisar sus materiales y diferencias:", lotes_disponibles)
 
@@ -600,21 +581,17 @@ elif menu == "📊 Hoja de Procesos (Historial)":
             if lista_mats:
                 df_mats = pd.DataFrame(lista_mats)
                 
-                # Normalizar nombres de columnas por seguridad
                 df_mats.columns = [str(c).upper().strip() for c in df_mats.columns]
                 
-                # Asegurar columnas estándar
                 for col_requerida in ["CODIGO", "KG EN OF", "KG AGREGADOS", "OBSERVACIONES"]:
                     if col_requerida not in df_mats.columns:
                         df_mats[col_requerida] = ""
 
-                # CALCULAR DIFERENCIA AUTOMÁTICA (KG AGREGADOS - KG EN OF)
                 df_mats["KG EN OF"] = pd.to_numeric(df_mats["KG EN OF"], errors="coerce").fillna(0.0)
                 df_mats["KG AGREGADOS"] = pd.to_numeric(df_mats["KG AGREGADOS"], errors="coerce").fillna(0.0)
                 
                 df_mats["DIFERENCIA (kg)"] = df_mats["KG AGREGADOS"] - df_mats["KG EN OF"]
                 
-                # Crear columna de incidencias automática
                 def evaluar_incidencia(row):
                     diff = abs(row["DIFERENCIA (kg)"])
                     obs = str(row["OBSERVACIONES"]).strip()
@@ -624,11 +601,9 @@ elif menu == "📊 Hoja de Procesos (Historial)":
 
                 df_mats["ESTATUS / INCIDENCIA"] = df_mats.apply(evaluar_incidencia, axis=1)
 
-                # Reordenar columnas para visualización impecable
                 cols_ordenadas = ["CODIGO", "KG EN OF", "KG AGREGADOS", "DIFERENCIA (kg)", "ESTATUS / INCIDENCIA", "OBSERVACIONES"]
                 df_mats = df_mats[[c for c in cols_ordenadas if c in df_mats.columns]]
 
-                # Filtrar solo materiales con incidencias si el usuario prefiere ver puras anomalías, o mostrar todo limpio
                 solo_con_incidencias = st.checkbox("🔍 Mostrar únicamente materiales con diferencias o incidencias en este lote", value=False)
                 
                 if solo_con_incidencias:
