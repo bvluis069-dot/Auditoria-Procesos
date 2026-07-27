@@ -12,9 +12,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# ─────────────────────────────────────────────
-# CSS: Diseño formal, paleta industrial oscura
-# ─────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
@@ -272,9 +269,7 @@ h3 {
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────
-# JS: Web Notifications + Sonido
-# ─────────────────────────────────────
+
 st.markdown("""
 <script>
 // Solicitar permiso de notificaciones al cargar
@@ -312,9 +307,7 @@ window._notificarPropela = notificarPropela;
 </script>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────
-# Constantes
-# ─────────────────────────────────────
+
 ACTIVAS_FILE   = "auditorias_activas.csv"
 HISTORIAL_FILE = "hoja_de_procesos_agitacion.csv"
 ERRORES_FILE   = "procesos_cancelados.csv"
@@ -351,9 +344,7 @@ MOTIVOS_CANCELACION = [
     "Otro (especificar en observaciones)"
 ]
 
-# ─────────────────────────────────────
-# Google Sheets
-# ─────────────────────────────────────
+
 @st.cache_resource
 def conectar_google_sheets():
     try:
@@ -392,9 +383,7 @@ def guardar_en_google_sheets(datos):
         st.warning(f"Nota: guardado localmente. Falla Google Sheets: {e}")
         return False
 
-# ─────────────────────────────────────
-# Lógica de tiempos
-# ─────────────────────────────────────
+
 def calcular_regla_tiempo(tara_total_kg):
     if tara_total_kg <= 200:
         return 10.0, "10 min", 10.0, 10.0
@@ -403,9 +392,7 @@ def calcular_regla_tiempo(tara_total_kg):
     else:
         return 27.5, "25 a 30 min", 25.0, 30.0
 
-# ─────────────────────────────────────
-# CSV helpers
-# ─────────────────────────────────────
+
 def cargar_activas():
     if os.path.exists(ACTIVAS_FILE):
         df = pd.read_csv(ACTIVAS_FILE)
@@ -487,9 +474,7 @@ def obtener_mapa_cowles_ocupados(df_activas):
         mapa[r["Propela"]] = str(r["Orden_Fabricacion_Lote"])
     return mapa
 
-# ─────────────────────────────────────
-# Helper visual
-# ─────────────────────────────────────
+
 def chip_estatus(texto):
     texto_lower = texto.lower()
     if "concluido" in texto_lower or "listo" in texto_lower:
@@ -526,9 +511,7 @@ def notif_js(titulo, cuerpo):
     </script>
     """
 
-# ═══════════════════════════════════════
-# SIDEBAR
-# ═══════════════════════════════════════
+
 with st.sidebar:
     st.markdown("""
     <div style="padding: 16px 0 8px 0;">
@@ -559,7 +542,7 @@ with st.sidebar:
     if st.button("Actualizar pantalla", use_container_width=True):
         st.rerun()
 
-    # Mini-resumen en sidebar
+
     df_tmp = cargar_activas()
     if not df_tmp.empty:
         activos_mez = int(df_tmp["En_Mezclado"].sum())
@@ -578,9 +561,7 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════
-# VISTA 1 — MONITOR DE AGITACIÓN EN VIVO
-# ═══════════════════════════════════════════════════════════
+
 if menu == "Monitor — Agitación en Vivo":
     st.markdown("# Monitor de Agitación en Cowles")
     st.markdown('<div class="page-caption">Seguimiento en tiempo real de O.F. en proceso de agitación</div>', unsafe_allow_html=True)
@@ -606,7 +587,7 @@ if menu == "Monitor — Agitación en Vivo":
             mins_trans  = (ahora - hora_inicio).total_seconds() / 60.0
             tiempo_ok   = mins_trans >= row["Min_Permitido"]
 
-            # Notificación JS si se acaba de cumplir el tiempo (ventana ±0.5 min)
+
             if tiempo_ok and mins_trans <= row["Min_Permitido"] + 0.5:
                 st.markdown(notif_js(
                     f"⚠️ APAGAR COWLES — {row['Propela']}",
@@ -630,7 +611,7 @@ if menu == "Monitor — Agitación en Vivo":
                 </div>
                 """, unsafe_allow_html=True)
 
-                # ── Fila de métricas
+
                 mc1, mc2, mc3, mc4 = st.columns(4)
                 with mc1:
                     st.markdown(f"""
@@ -661,7 +642,7 @@ if menu == "Monitor — Agitación en Vivo":
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # ── Alerta de tiempo
+
                 if tiempo_ok:
                     st.markdown(f"""
                     <div class="alert-stop">
@@ -676,7 +657,6 @@ if menu == "Monitor — Agitación en Vivo":
                         para alcanzar el tiempo mínimo establecido.
                     </div>""", unsafe_allow_html=True)
 
-                # ── Sección: Configuración en Propela ────────────────────
                 st.markdown("""
                 <div class="section-divider">
                     <div class="divider-line"></div>
@@ -691,7 +671,7 @@ if menu == "Monitor — Agitación en Vivo":
                 pr1, pr2, pr3, pr4 = st.columns([2, 1.5, 1.5, 2])
 
                 with pr1:
-                    # Cowles asignado (solo lectura visual, no cambia aquí)
+
                     st.markdown(f"""
                     <div style="margin-bottom:12px;">
                         <div style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.07em;
@@ -701,7 +681,6 @@ if menu == "Monitor — Agitación en Vivo":
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # Tara total (informativa)
                     st.markdown(f"""
                     <div>
                         <div style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.07em;
@@ -730,7 +709,7 @@ if menu == "Monitor — Agitación en Vivo":
                     )
 
                 with pr4:
-                    # Operador mezclado: si es el mismo que pesado se autocompleta
+
                     op_default = row['Operador_Mezclado'] if row['Operador_Mezclado'] else row['Operador']
                     mismo_operador = op_default == row['Operador']
 
@@ -755,9 +734,8 @@ if menu == "Monitor — Agitación en Vivo":
                         placeholder="Nombre operador mezclado"
                     )
 
-                st.markdown('</div>', unsafe_allow_html=True)  # /card-section
+                st.markdown('</div>', unsafe_allow_html=True)  
 
-                # ── Sección: Finalizar ───────────────────────────────────
                 st.markdown("""
                 <div class="section-divider">
                     <div class="divider-line"></div>
@@ -824,14 +802,13 @@ if menu == "Monitor — Agitación en Vivo":
                         st.rerun()
 
                 with col_cancel:
-                    # Botón de cancelar / error
+
                     st.markdown('<div class="btn-cancel">', unsafe_allow_html=True)
                     if st.button("Cancelar / Error", key=f"btn_open_cancel_{row['ID']}",
                                  use_container_width=True):
                         st.session_state[f"show_cancel_{row['ID']}"] = True
                     st.markdown('</div>', unsafe_allow_html=True)
 
-                # ── Panel de cancelación ──────────────────────────────
                 if st.session_state.get(f"show_cancel_{row['ID']}", False):
                     st.markdown("""
                     <div style="background:#1a0505; border:1px solid #6e1a1a; border-radius:8px;
@@ -900,9 +877,7 @@ if menu == "Monitor — Agitación en Vivo":
                     st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════
-# VISTA 2 — ÁREA DE PESADO Y ESPERA
-# ═══════════════════════════════════════════════════════════
+
 elif menu == "Área de Pesado y Espera":
     st.markdown("# Área de Pesado y Espera de Materiales")
     st.markdown('<div class="page-caption">Órdenes de fabricación en preparación o pausadas antes de pasar a agitación</div>',
@@ -959,7 +934,7 @@ elif menu == "Área de Pesado y Espera":
                 """
                 st.markdown(op_row_html, unsafe_allow_html=True)
 
-                # Controles
+
                 cc1, cc2 = st.columns([2, 2])
                 with cc1:
                     nuevo_estatus = st.selectbox(
@@ -1019,7 +994,7 @@ elif menu == "Área de Pesado y Espera":
                         st.session_state[f"show_cancel_pes_{row['ID']}"] = True
                     st.markdown('</div>', unsafe_allow_html=True)
 
-                # Panel cancelación en pesado
+
                 if st.session_state.get(f"show_cancel_pes_{row['ID']}", False):
                     st.markdown("""
                     <div style="background:#1a0505; border:1px solid #6e1a1a; border-radius:8px;
@@ -1091,9 +1066,7 @@ elif menu == "Área de Pesado y Espera":
                         st.rerun()
 
 
-# ═══════════════════════════════════════════════════════════
-# VISTA 3 — REGISTRAR NUEVA O.F.
-# ═══════════════════════════════════════════════════════════
+
 elif menu == "Registrar Nueva O.F.":
     st.markdown("# Registrar Nueva Orden de Fabricación")
     st.markdown('<div class="page-caption">Captura inicial del lote antes de pasar a pesado y agitación</div>',
@@ -1103,7 +1076,7 @@ elif menu == "Registrar Nueva O.F.":
     mapa_ocupados = obtener_mapa_cowles_ocupados(df_activas)
 
     with st.form("form_registro_of"):
-        # ── Sección 1: Identificación ──────────────────────
+
         st.markdown('<div class="card-section">', unsafe_allow_html=True)
         st.markdown('<div class="card-section-title">1 · Identificación y generales</div>', unsafe_allow_html=True)
 
@@ -1130,7 +1103,6 @@ elif menu == "Registrar Nueva O.F.":
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # ── Sección 2: Pesos, taras e inspección ──────────
         st.markdown('<div class="card-section">', unsafe_allow_html=True)
         st.markdown('<div class="card-section-title">2 · Pesos, taras e inspección inicial</div>', unsafe_allow_html=True)
 
@@ -1156,7 +1128,6 @@ elif menu == "Registrar Nueva O.F.":
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # ── Sección 3: Tiempos ────────────────────────────
         st.markdown('<div class="card-section">', unsafe_allow_html=True)
         st.markdown('<div class="card-section-title">3 · Parámetros de tiempo de agitación</div>', unsafe_allow_html=True)
 
@@ -1184,7 +1155,6 @@ elif menu == "Registrar Nueva O.F.":
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # ── Sección 4: Materiales ─────────────────────────
         st.markdown('<div class="card-section">', unsafe_allow_html=True)
         st.markdown('<div class="card-section-title">4 · Materiales / fórmula de pesado</div>', unsafe_allow_html=True)
 
@@ -1227,9 +1197,7 @@ elif menu == "Registrar Nueva O.F.":
             st.balloons()
 
 
-# ═══════════════════════════════════════════════════════════
-# VISTA 4 — HISTORIAL DE PROCESOS
-# ═══════════════════════════════════════════════════════════
+
 elif menu == "Historial de Procesos":
     st.markdown("# Historial de Procesos")
     st.markdown('<div class="page-caption">Registro completo de auditorías y lotes finalizados</div>',
@@ -1317,9 +1285,7 @@ elif menu == "Historial de Procesos":
                 st.info("No hay detalle de materiales para esta O.F.")
 
 
-# ═══════════════════════════════════════════════════════════
-# VISTA 5 — PROCESOS CANCELADOS / ERRORES
-# ═══════════════════════════════════════════════════════════
+
 elif menu == "Procesos Cancelados":
     st.markdown("# Registro de Cancelaciones y Errores")
     st.markdown('<div class="page-caption">Trazabilidad de procesos eliminados o cancelados con su motivo</div>',
